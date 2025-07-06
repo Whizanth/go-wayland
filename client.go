@@ -56,30 +56,21 @@ func (client *Client) Read() *Message {
 	return result
 }
 
-// Write sends a message to the compositor
-func (client *Client) Write(msg *Message) {
+// Write sends a message to the compositor, optionally passing through any file descriptors
+func (client *Client) Write(msg *Message, fd ...int) error {
 	//fmt.Println(">>> " + msg.String())
-	client.conn.Write(msg.Bytes())
+	if len(fd) == 0 {
+		_, err := client.conn.Write(msg.Bytes())
+		return err
+	} else {
+		_, _, err := client.conn.(*net.UnixConn).WriteMsgUnix(msg.Bytes(), unix.UnixRights(fd...), nil)
+		return err
+	}
 }
 
 // Request composes a message and sends it as request to the compositor
 func (client *Client) Request(objectId uint32, opcode uint16, args ...any) {
 	client.Write(NewMessage(objectId, opcode, args...))
-}
-
-// WriteMsgUnix sends a message and passes a file descriptor to the compositor
-func (client *Client) WriteMsgUnix(msg *Message, fd int) error {
-	bytes := msg.Bytes()
-	oob := unix.UnixRights(fd)
-	n, oobn, err := client.conn.(*net.UnixConn).WriteMsgUnix(bytes, oob, nil)
-	if err != nil {
-		return err
-	} else if n < len(bytes) {
-		return errors.New("connection closed or short write")
-	} else if oobn < len(oob) {
-		return errors.New("failed to send control message")
-	}
-	return nil
 }
 
 // NewClient creates a new client and tries to connect to the compositor

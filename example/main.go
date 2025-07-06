@@ -29,8 +29,8 @@ func main() {
 	registryDoneCallbackId := client.NewObjectId()
 	client.Request(displayId, 0, registryDoneCallbackId)
 
-	// Query registry
-	registry := make(map[string]uint32)
+	// Query globals
+	globals := make(map[string]uint32)
 	for {
 		if msg := client.Read(); msg.ObjectId == registryId && msg.OpCode == 0 {
 			// Received wl_registry::global
@@ -39,8 +39,8 @@ func main() {
 			version := msg.ReadUint32()
 
 			// Send wl_registry::bind
-			registry[iface] = client.NewObjectId()
-			client.Request(registryId, 0, name, iface, version, registry[iface])
+			globals[iface] = client.NewObjectId()
+			client.Request(registryId, 0, name, iface, version, globals[iface])
 		} else if msg.ObjectId == registryDoneCallbackId && msg.OpCode == 0 {
 			// Received wl_callback::done
 
@@ -50,16 +50,16 @@ func main() {
 
 	// Check for required extensions
 	for _, ext := range []string{"wl_compositor", "xdg_wm_base", "wl_shm"} {
-		if _, ok := registry[ext]; !ok {
+		if _, ok := globals[ext]; !ok {
 			fmt.Println("required compositor extensions missing")
 			os.Exit(1)
 		}
 	}
 
 	// Retrieve extensions
-	compositorId := registry["wl_compositor"]
-	xdgWmBaseId := registry["xdg_wm_base"]
-	shmId := registry["wl_shm"]
+	compositorId := globals["wl_compositor"]
+	xdgWmBaseId := globals["xdg_wm_base"]
+	shmId := globals["wl_shm"]
 
 	// Send wl_compositor::create_surface
 	surfaceId := client.NewObjectId()
@@ -140,27 +140,6 @@ func main() {
 
 	// Send wl_surface::damage
 	client.Request(surfaceId, 2, 0, 0, width, height)
-
-	/*
-		if decorationManagerId, ok := registry["zxdg_decoration_manager_v1"]; ok {
-			// Send zxdg_decoration_manager_v1::get_toplevel_decoration
-			toplevelDecorationId := client.NewObjectId()
-			client.Request(decorationManagerId, 1, toplevelDecorationId, xdgToplevelId)
-
-			// Send zxdg_toplevel_decoration_v1::set_mode
-			client.Request(toplevelDecorationId, 1, uint32(2))
-
-			for {
-				if msg := client.Read(); msg.ObjectId == toplevelDecorationId && msg.OpCode == 0 {
-					// Received xdg_toplevel_decoration::configure
-
-					// Send xdg_surface::ack_configure
-					client.Request(xdgSurfaceId, 4, msg.ReadUint32())
-					break
-				}
-			}
-		}
-	*/
 
 	// Send wl_surface::commit
 	client.Request(surfaceId, 6)
