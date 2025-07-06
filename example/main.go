@@ -6,49 +6,42 @@ import (
 	"os"
 	"syscall"
 
-	"git.whizanth.com/go/wayland"
+	"git.whizanth.com/go/wayland/wlclient"
 	"golang.org/x/sys/unix"
 )
 
 func main() {
 	// Connect to compositor
-	client, err := wayland.NewClient()
+	client, err := wlclient.New()
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
-	// First object is always the wl_display
-	displayId := client.NewObjectId()
+	// Get wl_display
+	display := client.GetDisplay()
 
-	// Send wl_display::get_registry
-	registryId := client.NewObjectId()
-	client.Request(displayId, 1, registryId)
+	// Get required global objects from registry
+	registry := display.GetRegistry()
+	registryDoneCallback := display.Sync()
 
-	// Send wl_display::sync
-	registryDoneCallbackId := client.NewObjectId()
-	client.Request(displayId, 0, registryDoneCallbackId)
-
-	// Query globals
-	globals := make(map[string]uint32)
+	globals := make(map[string]wlclient.Object)
 	for {
-		if msg := client.Read(); msg.ObjectId == registryId && msg.OpCode == 0 {
+		if msg := client.Read(); msg.ObjectId == wlclient.Object(registry).Id() && msg.OpCode == 0 {
 			// Received wl_registry::global
 			name := msg.ReadUint32()
 			iface := msg.ReadString()
 			version := msg.ReadUint32()
 
-			// Send wl_registry::bind
-			globals[iface] = client.NewObjectId()
-			client.Request(registryId, 0, name, iface, version, globals[iface])
-		} else if msg.ObjectId == registryDoneCallbackId && msg.OpCode == 0 {
+			if iface == "wl_compositor" || iface == "xdg_wm_base" || iface == "wl_shm" {
+				globals[iface] = registry.Bind(name, iface, version)
+			}
+		} else if msg.ObjectId == wlclient.Object(registryDoneCallback).Id() && msg.OpCode == 0 {
 			// Received wl_callback::done
-
 			break
 		}
 	}
 
-	// Check for required extensions
 	for _, ext := range []string{"wl_compositor", "xdg_wm_base", "wl_shm"} {
 		if _, ok := globals[ext]; !ok {
 			fmt.Println("required compositor extensions missing")
@@ -56,38 +49,24 @@ func main() {
 		}
 	}
 
-	// Retrieve extensions
-	compositorId := globals["wl_compositor"]
-	xdgWmBaseId := globals["xdg_wm_base"]
-	shmId := globals["wl_shm"]
+	compositor := wlclient.WlCompositor(globals["wl_compositor"])
+	xdgWmBase := wlclient.XdgWmBase(globals["xdg_wm_base"])
+	shm := wlclient.WlShm(globals["wl_shm"])
 
-	// Send wl_compositor::create_surface
-	surfaceId := client.NewObjectId()
-	client.Request(compositorId, 0, surfaceId)
-
-	// Send xdg_wm_base::get_xdg_surface
-	xdgSurfaceId := client.NewObjectId()
-	client.Request(xdgWmBaseId, 2, xdgSurfaceId, surfaceId)
-
-	// Send xdg_surface::get_toplevel
-	xdgToplevelId := client.NewObjectId()
-	client.Request(xdgSurfaceId, 1, xdgToplevelId)
-
-	// Send wl_surface::commit
-	client.Request(surfaceId, 6)
+	// Create toplevel surface
+	surface := compositor.CreateSurface()
+	xdgSurface := xdgWmBase.GetXdgSurface(surface)
+	xdgToplevel := xdgSurface.GetToplevel()
+	surface.Commit()
 
 	for {
 		if msg := client.Read(); msg.ObjectId == 1 && msg.OpCode == 0 {
 			// Received wl_display::error
-
 			fmt.Println("error:", msg.ReadUint32(), msg.ReadUint32(), msg.ReadString())
 			break
-		} else if msg.ObjectId == xdgSurfaceId && msg.OpCode == 0 {
+		} else if msg.ObjectId == wlclient.Object(xdgSurface).Id() && msg.OpCode == 0 {
 			// Received xdg_surface::configure
-
-			// Send xdg_surface::ack_configure
-			client.Request(xdgSurfaceId, 4, msg.ReadUint32())
-
+			xdgSurface.AckConfigure(msg.ReadUint32())
 			break
 		}
 	}
@@ -124,39 +103,22 @@ func main() {
 	}
 
 	// Send wl_shm::create_pool
-	shmPoolId := client.NewObjectId()
-	client.WriteMsgUnix(wayland.NewMessage(shmId, 0, shmPoolId, int32(width*height*4)), fd)
-	if err != nil {
-		fmt.Printf("error creating pool: %v\n", err)
-		os.Exit(1)
-	}
+	shmPool := shm.CreatePool(fd, int32(width*height*4))
+	buffer := shmPool.CreateBuffer(0, int32(width), int32(height), int32(width*4), 0)
+	surface.Attach(buffer, 0, 0)
+	surface.Damage(0, 0, int32(width), int32(height))
 
-	// Send wl_shm_pool::create_buffer
-	bufferId := client.NewObjectId()
-	client.Request(shmPoolId, 0, bufferId, 0, width, height, width*4, 0)
-
-	// Send wl_surface::attach
-	client.Request(surfaceId, 1, bufferId, 0, 0)
-
-	// Send wl_surface::damage
-	client.Request(surfaceId, 2, 0, 0, width, height)
-
-	// Send wl_surface::commit
-	client.Request(surfaceId, 6)
+	surface.Commit()
 
 	for {
 		if msg := client.Read(); msg.ObjectId == 1 && msg.OpCode == 0 {
 			// Received wl_display::error
-
 			fmt.Println("error:", msg.ReadUint32(), msg.ReadUint32(), msg.ReadString())
-		} else if msg.ObjectId == xdgWmBaseId && msg.OpCode == 0 {
+		} else if msg.ObjectId == wlclient.Object(xdgWmBase).Id() && msg.OpCode == 0 {
 			// Received xdg_wm_base::ping
-
-			// Send xdg_wm_base::pong
-			client.Request(xdgWmBaseId, 3, msg.ReadUint32())
-		} else if msg.ObjectId == xdgToplevelId && msg.OpCode == 1 {
+			xdgWmBase.Pong(msg.ReadUint32())
+		} else if msg.ObjectId == wlclient.Object(xdgToplevel).Id() && msg.OpCode == 1 {
 			// Received xdg_toplevel::close
-
 			break
 		}
 	}
