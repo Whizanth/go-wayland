@@ -92,6 +92,8 @@ func toCamelCase(str string) string {
 	result := builder.String()
 	if result == "range" {
 		return "rnge"
+	} else if result == "interface" {
+		return "iface"
 	}
 	return result
 }
@@ -103,12 +105,18 @@ func main() {
 import "git.whizanth.com/go/wayland"
 
 type Object struct {
-	client *Client
-	id     uint32
+	client  *Client
+	id      uint32
+	iface   string
+	version uint32
 }
 
 func (object Object) Id() uint32 {
 	return object.id
+}
+
+func (object Object) Interface() string {
+	return object.iface
 }
 
 func New() (*Client, error) {
@@ -120,6 +128,7 @@ func New() (*Client, error) {
 	result := &Client{Client: client}
 	result.display.client = result
 	result.display.id = result.NewObjectId()
+	result.display.iface = "wl_display"
 	return result, nil
 }
 
@@ -212,6 +221,7 @@ func generateClient(builder *strings.Builder, xmlPath string) {
 					newsBuilder.WriteString("Object{\n")
 					newsBuilder.WriteString("		client: object.client,\n")
 					newsBuilder.WriteString("		id: object.client.NewObjectId(),\n")
+					newsBuilder.WriteString(`		iface: "` + arg.Interface + "\",\n")
 					newsBuilder.WriteString("	}")
 
 					if arg.Interface != "Object" {
@@ -282,7 +292,7 @@ func generateClient(builder *strings.Builder, xmlPath string) {
 			builder.WriteString(newsBuilder.String())
 
 			if fd > 0 {
-				builder.WriteString("	object.client.Write(wayland.NewMessage(object.id, " + strconv.Itoa(opCode) + msgArgsBuilder.String() + "), " + fdBuilder.String() + ")\n")
+				builder.WriteString("	object.client.Write(wayland.NewMessage(object.id, " + strconv.Itoa(opCode) + msgArgsBuilder.String() + ").WithFds(" + fdBuilder.String() + "))\n")
 			} else {
 				builder.WriteString("	object.client.Write(wayland.NewMessage(object.id, " + strconv.Itoa(opCode) + msgArgsBuilder.String() + "))\n")
 			}
@@ -292,6 +302,64 @@ func generateClient(builder *strings.Builder, xmlPath string) {
 				builder.WriteString("	return " + returnBuilder.String() + "\n")
 			}
 
+			builder.WriteString("}\n")
+			builder.WriteString("\n")
+		}
+
+		for opCode, event := range iface.Events {
+			var args1Builder strings.Builder
+			var args2Builder strings.Builder
+
+			args := 0
+
+			for _, arg := range event.Args {
+				if args > 0 {
+					args1Builder.WriteString(", ")
+					args2Builder.WriteString(", ")
+				}
+
+				args1Builder.WriteString(toCamelCase(arg.Name) + " ")
+
+				if arg.Type == "string" {
+					args1Builder.WriteString("string")
+					args2Builder.WriteString("message.ReadString()")
+				} else if arg.Type == "uint" {
+					args1Builder.WriteString("uint32")
+					args2Builder.WriteString("message.ReadUint32()")
+				} else if arg.Type == "int" || arg.Type == "enum" {
+					args1Builder.WriteString("int32")
+					args2Builder.WriteString("message.ReadInt32()")
+				} else if arg.Type == "fixed" {
+					args1Builder.WriteString("wayland.Fixed")
+					args2Builder.WriteString("message.ReadFixed()")
+				} else if arg.Type == "object" {
+					if arg.Interface != "" {
+						args1Builder.WriteString(toPascalCase(arg.Interface))
+						args2Builder.WriteString(toPascalCase(arg.Interface) + "(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()})")
+					} else {
+						args1Builder.WriteString("Object")
+						args2Builder.WriteString("Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}")
+					}
+				} else if arg.Type == "fd" {
+					args1Builder.WriteString("int")
+					args2Builder.WriteString("message.ReadFd()")
+				} else if arg.Type == "array" {
+					args1Builder.WriteString("[]uint32")
+					args2Builder.WriteString("message.ReadArray()")
+				} else if arg.Type == "new_id" {
+					args1Builder.WriteString(toPascalCase(arg.Interface))
+					args2Builder.WriteString(toPascalCase(arg.Interface) + `(Object{client: object.client, id: object.client.NewObjectId(), iface: "` + arg.Interface + `"})`)
+				}
+
+				args++
+			}
+
+			builder.WriteString("func (object " + toPascalCase(iface.Name) + ") On" + toPascalCase(event.Name) + "(listener func(")
+			builder.WriteString(args1Builder.String())
+			builder.WriteString(")) chan struct{} {\n")
+			builder.WriteString("	return object.client.On(object.id, " + strconv.Itoa(opCode) + ", func(message *wayland.Message) {\n")
+			builder.WriteString("		listener(" + args2Builder.String() + ")\n")
+			builder.WriteString("	})\n")
 			builder.WriteString("}\n")
 			builder.WriteString("\n")
 		}

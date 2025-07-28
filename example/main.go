@@ -18,6 +18,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	go client.Listen()
+	defer client.Close()
+
 	// Get wl_display
 	display := client.GetDisplay()
 
@@ -26,21 +29,14 @@ func main() {
 	registryDoneCallback := display.Sync()
 
 	globals := make(map[string]wlclient.Object)
-	for {
-		if msg := client.Read(); msg.ObjectId == wlclient.Object(registry).Id() && msg.OpCode == 0 {
-			// Received wl_registry::global
-			name := msg.ReadUint32()
-			iface := msg.ReadString()
-			version := msg.ReadUint32()
 
-			if iface == "wl_compositor" || iface == "xdg_wm_base" || iface == "wl_shm" {
-				globals[iface] = registry.Bind(name, iface, version)
-			}
-		} else if msg.ObjectId == wlclient.Object(registryDoneCallback).Id() && msg.OpCode == 0 {
-			// Received wl_callback::done
-			break
+	registry.OnGlobal(func(name uint32, iface string, version uint32) {
+		if iface == "wl_compositor" || iface == "xdg_wm_base" || iface == "wl_shm" {
+			globals[iface] = registry.Bind(name, iface, version)
 		}
-	}
+	})
+
+	<-registryDoneCallback.OnDone(func(callbackData uint32) {})
 
 	for _, ext := range []string{"wl_compositor", "xdg_wm_base", "wl_shm"} {
 		if _, ok := globals[ext]; !ok {
@@ -59,17 +55,13 @@ func main() {
 	xdgToplevel := xdgSurface.GetToplevel()
 	surface.Commit()
 
-	for {
-		if msg := client.Read(); msg.ObjectId == 1 && msg.OpCode == 0 {
-			// Received wl_display::error
-			fmt.Println("error:", msg.ReadUint32(), msg.ReadUint32(), msg.ReadString())
-			break
-		} else if msg.ObjectId == wlclient.Object(xdgSurface).Id() && msg.OpCode == 0 {
-			// Received xdg_surface::configure
-			xdgSurface.AckConfigure(msg.ReadUint32())
-			break
-		}
-	}
+	display.OnError(func(objectId wlclient.Object, code uint32, message string) {
+		fmt.Println("error:", objectId.Interface(), objectId.Id(), code, message)
+	})
+
+	<-xdgSurface.OnConfigure(func(serial uint32) {
+		xdgSurface.AckConfigure(serial)
+	})
 
 	// Framebuffer size
 	width := 800
@@ -110,16 +102,9 @@ func main() {
 
 	surface.Commit()
 
-	for {
-		if msg := client.Read(); msg.ObjectId == 1 && msg.OpCode == 0 {
-			// Received wl_display::error
-			fmt.Println("error:", msg.ReadUint32(), msg.ReadUint32(), msg.ReadString())
-		} else if msg.ObjectId == wlclient.Object(xdgWmBase).Id() && msg.OpCode == 0 {
-			// Received xdg_wm_base::ping
-			xdgWmBase.Pong(msg.ReadUint32())
-		} else if msg.ObjectId == wlclient.Object(xdgToplevel).Id() && msg.OpCode == 1 {
-			// Received xdg_toplevel::close
-			break
-		}
-	}
+	xdgWmBase.OnPing(func(serial uint32) {
+		xdgWmBase.Pong(serial)
+	})
+
+	<-xdgToplevel.OnClose(func() {})
 }

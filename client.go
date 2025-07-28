@@ -7,15 +7,17 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"golang.org/x/sys/unix"
 )
 
 type Client struct {
-	conn     net.Conn
-	objectId uint32
-	rmu      sync.Mutex
+	conn      net.Conn
+	objectId  uint32
+	rmu       sync.Mutex
+	listeners map[int]map[int]func(message *Message)
 }
 
 // NewObjectId returns a new object ID that hasn't been used yet
@@ -26,6 +28,8 @@ func (client *Client) NewObjectId() uint32 {
 
 // Read waits for and reads the next message from the compositor
 func (client *Client) Read() *Message {
+	// TODO: read fds
+
 	client.rmu.Lock()
 
 	header := make([]byte, 8)
@@ -57,13 +61,13 @@ func (client *Client) Read() *Message {
 }
 
 // Write sends a message to the compositor, optionally passing through any file descriptors
-func (client *Client) Write(msg *Message, fd ...int) error {
+func (client *Client) Write(msg *Message) error {
 	//fmt.Println(">>> " + msg.String())
-	if len(fd) == 0 {
+	if len(msg.Fds) == 0 {
 		_, err := client.conn.Write(msg.Bytes())
 		return err
 	} else {
-		_, _, err := client.conn.(*net.UnixConn).WriteMsgUnix(msg.Bytes(), unix.UnixRights(fd...), nil)
+		_, _, err := client.conn.(*net.UnixConn).WriteMsgUnix(msg.Bytes(), unix.UnixRights(msg.Fds...), nil)
 		return err
 	}
 }
@@ -73,6 +77,45 @@ func (client *Client) Request(objectId uint32, opcode uint16, args ...any) {
 	client.Write(NewMessage(objectId, opcode, args...))
 }
 
+// On calls listener if the client receives an event with the specified objectId and opcode
+func (client *Client) On(objectId uint32, opcode uint16, listener func(message *Message)) chan struct{} {
+	wait := make(chan struct{})
+
+	listeners, ok := client.listeners[int(objectId)]
+	if !ok {
+		client.listeners[int(objectId)] = make(map[int]func(message *Message))
+		listeners = client.listeners[int(objectId)]
+	}
+	listeners[int(opcode)] = func(msg *Message) {
+		listener(msg)
+
+		if len(wait) == 0 {
+			go func() {
+				wait <- struct{}{}
+			}()
+		}
+	}
+
+	return wait
+}
+
+// Listen reads and delivering messages to the appropriate listener if registered
+func (client *Client) Listen() {
+	for {
+		msg := client.Read()
+		if listeners, ok := client.listeners[int(msg.ObjectId)]; ok {
+			if listener, ok := listeners[int(msg.OpCode)]; ok {
+				listener(msg)
+			}
+		}
+	}
+}
+
+// Close disconnects the client
+func (client *Client) Close() {
+	client.conn.Close()
+}
+
 // NewClient creates a new client and tries to connect to the compositor
 func NewClient() (*Client, error) {
 	address := os.Getenv("WAYLAND_SOCKET")
@@ -80,15 +123,17 @@ func NewClient() (*Client, error) {
 		waylandDisplay := os.Getenv("WAYLAND_DISPLAY")
 		xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR")
 		if waylandDisplay != "" && xdgRuntimeDir != "" {
-			address = xdgRuntimeDir + waylandDisplay
+			address = filepath.Join(xdgRuntimeDir, waylandDisplay)
 		} else if xdgRuntimeDir != "" {
-			address = xdgRuntimeDir + "/wayland-0"
+			address = filepath.Join(xdgRuntimeDir, "wayland-0")
 		} else {
 			return nil, errors.New("no Wayland compositor detected")
 		}
 	}
 
-	result := &Client{}
+	result := &Client{
+		listeners: make(map[int]map[int]func(message *Message)),
+	}
 
 	var err error
 	result.conn, err = net.Dial("unix", address)
