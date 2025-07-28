@@ -15,6 +15,8 @@ type Message struct {
 	Body     []byte
 	n        uint16
 	mu       sync.Mutex
+	Fds      []int
+	nextFd   int
 }
 
 func (msg *Message) Bytes() []byte {
@@ -68,6 +70,27 @@ func (msg *Message) ReadString() string {
 	return strings.TrimSuffix(result, "\x00")
 }
 
+func (msg *Message) ReadFixed() Fixed {
+	return Fixed(msg.ReadUint32())
+}
+
+func (msg *Message) ReadArray() []uint32 {
+	// TODO: implement reading arrays
+	return nil
+}
+
+func (msg *Message) ReadFd() int {
+	if msg.nextFd < len(msg.Fds) {
+		return msg.Fds[msg.nextFd]
+	}
+	return 0
+}
+
+func (msg *Message) WithFds(fd ...int) *Message {
+	msg.Fds = fd
+	return msg
+}
+
 func NewMessage(objectId uint32, opcode uint16, args ...any) *Message {
 	result := &Message{
 		ObjectId: objectId,
@@ -89,6 +112,8 @@ func NewMessage(objectId uint32, opcode uint16, args ...any) *Message {
 			if (len(arg)+1)%4 != 0 {
 				binary.Write(&buf, binary.LittleEndian, make([]byte, 4-(len(arg)+1)%4))
 			}
+		case []uint32:
+			// TODO: writing arrays
 		default:
 			return nil
 		}
