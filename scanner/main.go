@@ -94,6 +94,8 @@ func toCamelCase(str string) string {
 		return "rnge"
 	} else if result == "interface" {
 		return "iface"
+	} else if result == "map" {
+		return "m"
 	}
 	return result
 }
@@ -142,16 +144,17 @@ func (client *Client) GetDisplay() WlDisplay {
 }
 
 `)
+	ifaces := make(map[string]bool)
 
-	generateClient(&builder, filepath.Join("wayland", "protocol", "wayland.xml"))
+	generateClient(ifaces, &builder, filepath.Join("wayland", "protocol", "wayland.xml"))
 
-	for _, protocolStage := range []string{"stable", "staging", "experimental"} {
+	for _, protocolStage := range []string{"stable", "staging", "experimental", "unstable"} {
 		protocolDirs, _ := os.ReadDir(filepath.Join("wayland-protocols", protocolStage))
 		for _, dir := range protocolDirs {
 			files, _ := os.ReadDir(filepath.Join("wayland-protocols", protocolStage, dir.Name()))
 			for _, file := range files {
 				if strings.HasSuffix(file.Name(), ".xml") {
-					generateClient(&builder, filepath.Join("wayland-protocols", protocolStage, dir.Name(), file.Name()))
+					generateClient(ifaces, &builder, filepath.Join("wayland-protocols", protocolStage, dir.Name(), file.Name()))
 				}
 			}
 		}
@@ -160,7 +163,7 @@ func (client *Client) GetDisplay() WlDisplay {
 	os.WriteFile(filepath.Join("wlclient", "generated.go"), []byte(builder.String()), 0755)
 }
 
-func generateClient(builder *strings.Builder, xmlPath string) {
+func generateClient(ifaces map[string]bool, builder *strings.Builder, xmlPath string) {
 	content, err := os.ReadFile(xmlPath)
 	if err != nil {
 		fmt.Printf("unable to read %s: %v\n", xmlPath, err)
@@ -174,6 +177,13 @@ func generateClient(builder *strings.Builder, xmlPath string) {
 	}
 
 	for _, iface := range proto.Interfaces {
+		if _, ok := ifaces[iface.Name]; ok {
+			// duplicate
+			continue
+		}
+
+		ifaces[iface.Name] = true
+
 		builder.WriteString("type " + toPascalCase(iface.Name) + " Object\n")
 		builder.WriteString("\n")
 
@@ -255,6 +265,8 @@ func generateClient(builder *strings.Builder, xmlPath string) {
 					argsBuilder.WriteString(toPascalCase(arg.Interface))
 				} else if arg.Type == "fixed" {
 					argsBuilder.WriteString("wayland.Fixed")
+				} else if arg.Type == "array" {
+					argsBuilder.WriteString("[]uint32")
 				} else if arg.Type == "fd" {
 					argsBuilder.WriteString("int")
 
