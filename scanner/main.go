@@ -96,6 +96,8 @@ func toCamelCase(str string) string {
 		return "iface"
 	} else if result == "map" {
 		return "m"
+	} else if result == "type" {
+		return "typ"
 	}
 	return result
 }
