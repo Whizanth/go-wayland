@@ -137,6 +137,10 @@ func (object WlCompositor) CreateRegion() WlRegion {
 	return id
 }
 
+func (object WlCompositor) Release() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
 type WlShmPool Object
 
 func (object WlShmPool) CreateBuffer(offset int32, width int32, height int32, stride int32, format uint32) WlBuffer {
@@ -361,6 +365,10 @@ func (object WlDataDeviceManager) GetDataDevice(seat WlSeat) WlDataDevice {
 	return id
 }
 
+func (object WlDataDeviceManager) Release() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
 type WlShell Object
 
 func (object WlShell) GetShellSurface(surface WlSurface) WlShellSurface {
@@ -487,6 +495,18 @@ func (object WlSurface) DamageBuffer(x int32, y int32, width int32, height int32
 
 func (object WlSurface) Offset(x int32, y int32) {
 	object.client.Write(wayland.NewMessage(object.id, 10, x, y))
+}
+
+func (object WlSurface) GetRelease() WlCallback {
+	callback := WlCallback(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "wl_callback",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 11, callback.id))
+
+	return callback
 }
 
 func (object WlSurface) OnEnter(listener func(output WlOutput)) chan struct{} {
@@ -640,6 +660,12 @@ func (object WlPointer) OnAxisValue120(listener func(axis uint32, value120 int32
 func (object WlPointer) OnAxisRelativeDirection(listener func(axis uint32, direction uint32)) chan struct{} {
 	return object.client.On(object.id, 10, func(message *wayland.Message) {
 		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object WlPointer) OnWarp(listener func(surfaceX wayland.Fixed, surfaceY wayland.Fixed)) chan struct{} {
+	return object.client.On(object.id, 11, func(message *wayland.Message) {
+		listener(message.ReadFixed(), message.ReadFixed())
 	})
 }
 
@@ -843,6 +869,10 @@ func (object WlFixes) DestroyRegistry(registry WlRegistry) {
 	object.client.Write(wayland.NewMessage(object.id, 1, registry.id))
 }
 
+func (object WlFixes) AckGlobalRemove(registry WlRegistry, name uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 2, registry.id, name))
+}
+
 type ZwpLinuxDmabufV1 Object
 
 func (object ZwpLinuxDmabufV1) Destroy() {
@@ -921,6 +951,10 @@ func (object ZwpLinuxBufferParamsV1) CreateImmed(width int32, height int32, form
 	object.client.Write(wayland.NewMessage(object.id, 3, bufferId.id, width, height, format, flags))
 
 	return bufferId
+}
+
+func (object ZwpLinuxBufferParamsV1) SetSamplingDevice(device []uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, device))
 }
 
 func (object ZwpLinuxBufferParamsV1) OnCreated(listener func(buffer WlBuffer)) chan struct{} {
@@ -1809,6 +1843,30 @@ func (object WpColorManagerV1) CreateWindowsScrgb() WpImageDescriptionV1 {
 	return imageDescription
 }
 
+func (object WpColorManagerV1) GetImageDescription(reference WpImageDescriptionReferenceV1) WpImageDescriptionV1 {
+	imageDescription := WpImageDescriptionV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "wp_image_description_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 7, imageDescription.id, reference.id))
+
+	return imageDescription
+}
+
+func (object WpColorManagerV1) CreateWindowsBt2100() WpImageDescriptionV1 {
+	imageDescription := WpImageDescriptionV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "wp_image_description_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 8, imageDescription.id))
+
+	return imageDescription
+}
+
 func (object WpColorManagerV1) OnSupportedIntent(listener func(renderIntent uint32)) chan struct{} {
 	return object.client.On(object.id, 0, func(message *wayland.Message) {
 		listener(message.ReadUint32())
@@ -1913,6 +1971,12 @@ func (object WpColorManagementSurfaceFeedbackV1) OnPreferredChanged(listener fun
 	})
 }
 
+func (object WpColorManagementSurfaceFeedbackV1) OnPreferredChanged2(listener func(identityHi uint32, identityLo uint32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
 type WpImageDescriptionCreatorIccV1 Object
 
 func (object WpImageDescriptionCreatorIccV1) Create() WpImageDescriptionV1 {
@@ -2011,6 +2075,12 @@ func (object WpImageDescriptionV1) OnReady(listener func(identity uint32)) chan 
 	})
 }
 
+func (object WpImageDescriptionV1) OnReady2(listener func(identityHi uint32, identityLo uint32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
 type WpImageDescriptionInfoV1 Object
 
 func (object WpImageDescriptionInfoV1) OnDone(listener func()) chan struct{} {
@@ -2077,6 +2147,12 @@ func (object WpImageDescriptionInfoV1) OnTargetMaxFall(listener func(maxFall uin
 	return object.client.On(object.id, 10, func(message *wayland.Message) {
 		listener(message.ReadUint32())
 	})
+}
+
+type WpImageDescriptionReferenceV1 Object
+
+func (object WpImageDescriptionReferenceV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
 }
 
 type WpColorRepresentationManagerV1 Object
@@ -3337,6 +3413,96 @@ func (object XdgDialogV1) UnsetModal() {
 	object.client.Write(wayland.NewMessage(object.id, 2))
 }
 
+type XdgSessionManagerV1 Object
+
+func (object XdgSessionManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XdgSessionManagerV1) GetSession(reason uint32, sessionId string) XdgSessionV1 {
+	id := XdgSessionV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xdg_session_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, reason, sessionId))
+
+	return id
+}
+
+type XdgSessionV1 Object
+
+func (object XdgSessionV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XdgSessionV1) Remove() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object XdgSessionV1) AddToplevel(toplevel XdgToplevel, name string) XdgToplevelSessionV1 {
+	id := XdgToplevelSessionV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xdg_toplevel_session_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, id.id, toplevel.id, name))
+
+	return id
+}
+
+func (object XdgSessionV1) RestoreToplevel(toplevel XdgToplevel, name string) XdgToplevelSessionV1 {
+	id := XdgToplevelSessionV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xdg_toplevel_session_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 3, id.id, toplevel.id, name))
+
+	return id
+}
+
+func (object XdgSessionV1) RemoveToplevel(name string) {
+	object.client.Write(wayland.NewMessage(object.id, 4, name))
+}
+
+func (object XdgSessionV1) OnCreated(listener func(sessionId string)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object XdgSessionV1) OnRestored(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object XdgSessionV1) OnReplaced(listener func()) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type XdgToplevelSessionV1 Object
+
+func (object XdgToplevelSessionV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XdgToplevelSessionV1) Rename(name string) {
+	object.client.Write(wayland.NewMessage(object.id, 1, name))
+}
+
+func (object XdgToplevelSessionV1) OnRestored(listener func()) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener()
+	})
+}
+
 type XdgSystemBellV1 Object
 
 func (object XdgSystemBellV1) Destroy() {
@@ -3465,26 +3631,126 @@ func (object XwaylandSurfaceV1) Destroy() {
 	object.client.Write(wayland.NewMessage(object.id, 1))
 }
 
+type XxCutoutsManagerV1 Object
+
+func (object XxCutoutsManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxCutoutsManagerV1) GetCutouts(surface WlSurface) XxCutoutsV1 {
+	id := XxCutoutsV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_cutouts_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id))
+
+	return id
+}
+
+type XxCutoutsV1 Object
+
+func (object XxCutoutsV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxCutoutsV1) SetUnhandled(unhandled []uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, unhandled))
+}
+
+func (object XxCutoutsV1) OnCutoutBox(listener func(x int32, y int32, width int32, height int32, type uint32, id uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32(), message.ReadInt32(), message.ReadInt32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object XxCutoutsV1) OnCutoutCorner(listener func(position uint32, radius uint32, id uint32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object XxCutoutsV1) OnConfigure(listener func()) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type XxFractionalScaleManagerV2 Object
+
+func (object XxFractionalScaleManagerV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxFractionalScaleManagerV2) GetFractionalScale(surface WlSurface) XxFractionalScaleV2 {
+	id := XxFractionalScaleV2(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_fractional_scale_v2",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id))
+
+	return id
+}
+
+type XxFractionalScaleV2 Object
+
+func (object XxFractionalScaleV2) SetScaleFactor(scale824 uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 0, scale824))
+}
+
+func (object XxFractionalScaleV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object XxFractionalScaleV2) OnScaleFactor(listener func(scale824 uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
 type XxInputMethodV1 Object
 
+func (object XxInputMethodV1) PerformAction(action uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 0, action))
+}
+
 func (object XxInputMethodV1) CommitString(text string) {
-	object.client.Write(wayland.NewMessage(object.id, 0, text))
+	object.client.Write(wayland.NewMessage(object.id, 1, text))
 }
 
 func (object XxInputMethodV1) SetPreeditString(text string, cursorBegin int32, cursorEnd int32) {
-	object.client.Write(wayland.NewMessage(object.id, 1, text, cursorBegin, cursorEnd))
+	object.client.Write(wayland.NewMessage(object.id, 2, text, cursorBegin, cursorEnd))
 }
 
 func (object XxInputMethodV1) DeleteSurroundingText(beforeLength uint32, afterLength uint32) {
-	object.client.Write(wayland.NewMessage(object.id, 2, beforeLength, afterLength))
+	object.client.Write(wayland.NewMessage(object.id, 3, beforeLength, afterLength))
+}
+
+func (object XxInputMethodV1) MoveCursor(cursor int32, anchor int32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, cursor, anchor))
 }
 
 func (object XxInputMethodV1) Commit(serial uint32) {
-	object.client.Write(wayland.NewMessage(object.id, 3, serial))
+	object.client.Write(wayland.NewMessage(object.id, 5, serial))
+}
+
+func (object XxInputMethodV1) GetInputPopupSurface(surface WlSurface, positioner XxInputPopupPositionerV1) XxInputPopupSurfaceV2 {
+	id := XxInputPopupSurfaceV2(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_input_popup_surface_v2",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 6, id.id, surface.id, positioner.id))
+
+	return id
 }
 
 func (object XxInputMethodV1) Destroy() {
-	object.client.Write(wayland.NewMessage(object.id, 4))
+	object.client.Write(wayland.NewMessage(object.id, 7))
 }
 
 func (object XxInputMethodV1) OnActivate(listener func()) chan struct{} {
@@ -3517,16 +3783,90 @@ func (object XxInputMethodV1) OnContentType(listener func(hint uint32, purpose u
 	})
 }
 
-func (object XxInputMethodV1) OnDone(listener func()) chan struct{} {
+func (object XxInputMethodV1) OnSetAvailableActions(listener func(availableActions []uint32)) chan struct{} {
 	return object.client.On(object.id, 5, func(message *wayland.Message) {
+		listener(message.ReadArray())
+	})
+}
+
+func (object XxInputMethodV1) OnAnnounceSupportedFeatures(listener func(features uint32)) chan struct{} {
+	return object.client.On(object.id, 6, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object XxInputMethodV1) OnAnnounceProtocolCompat(listener func(compatLevel uint32)) chan struct{} {
+	return object.client.On(object.id, 7, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object XxInputMethodV1) OnDone(listener func()) chan struct{} {
+	return object.client.On(object.id, 8, func(message *wayland.Message) {
 		listener()
 	})
 }
 
 func (object XxInputMethodV1) OnUnavailable(listener func()) chan struct{} {
-	return object.client.On(object.id, 6, func(message *wayland.Message) {
+	return object.client.On(object.id, 9, func(message *wayland.Message) {
 		listener()
 	})
+}
+
+type XxInputPopupSurfaceV2 Object
+
+func (object XxInputPopupSurfaceV2) AckConfigure(serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 0, serial))
+}
+
+func (object XxInputPopupSurfaceV2) Reposition(positioner XxInputPopupPositionerV1, token uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, positioner.id, token))
+}
+
+func (object XxInputPopupSurfaceV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+func (object XxInputPopupSurfaceV2) OnStartConfigure(listener func(width uint32, height uint32, anchorX int32, anchorY int32, anchorWidth uint32, anchorHeight uint32, serial uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadInt32(), message.ReadInt32(), message.ReadUint32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object XxInputPopupSurfaceV2) OnRepositioned(listener func(token uint32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type XxInputPopupPositionerV1 Object
+
+func (object XxInputPopupPositionerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxInputPopupPositionerV1) SetSize(width uint32, height uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, width, height))
+}
+
+func (object XxInputPopupPositionerV1) SetAnchor(anchor uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 2, anchor))
+}
+
+func (object XxInputPopupPositionerV1) SetGravity(gravity uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 3, gravity))
+}
+
+func (object XxInputPopupPositionerV1) SetConstraintAdjustment(constraintAdjustment uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, constraintAdjustment))
+}
+
+func (object XxInputPopupPositionerV1) SetOffset(x int32, y int32) {
+	object.client.Write(wayland.NewMessage(object.id, 5, x, y))
+}
+
+func (object XxInputPopupPositionerV1) SetReactive() {
+	object.client.Write(wayland.NewMessage(object.id, 6))
 }
 
 type XxInputMethodManagerV2 Object
@@ -3543,7 +3883,51 @@ func (object XxInputMethodManagerV2) GetInputMethod(seat WlSeat) XxInputMethodV1
 	return inputMethod
 }
 
+func (object XxInputMethodManagerV2) GetPositioner() XxInputPopupPositionerV1 {
+	id := XxInputPopupPositionerV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_input_popup_positioner_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id))
+
+	return id
+}
+
 func (object XxInputMethodManagerV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+type XxKeyboardFilterV1 Object
+
+func (object XxKeyboardFilterV1) Unbind() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxKeyboardFilterV1) Filter(serial uint32, action uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, serial, action))
+}
+
+func (object XxKeyboardFilterV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+type XxKeyboardFilterManagerV1 Object
+
+func (object XxKeyboardFilterManagerV1) BindToInputMethod(keyboard WlKeyboard, inputMethod XxInputMethodV1, surface WlSurface) XxKeyboardFilterV1 {
+	extensions := XxKeyboardFilterV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_keyboard_filter_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 0, keyboard.id, inputMethod.id, surface.id, extensions.id))
+
+	return extensions
+}
+
+func (object XxKeyboardFilterManagerV1) Destroy() {
 	object.client.Write(wayland.NewMessage(object.id, 1))
 }
 
@@ -3631,5 +4015,1847 @@ func (object XxToplevelSessionV1) OnRestored(listener func(surface XdgToplevel))
 	return object.client.On(object.id, 0, func(message *wayland.Message) {
 		listener(XdgToplevel(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
 	})
+}
+
+type XxTextInputV3 Object
+
+func (object XxTextInputV3) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxTextInputV3) Enable() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object XxTextInputV3) Disable() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+func (object XxTextInputV3) SetSurroundingText(text string, cursor int32, anchor int32) {
+	object.client.Write(wayland.NewMessage(object.id, 3, text, cursor, anchor))
+}
+
+func (object XxTextInputV3) SetTextChangeCause(cause uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, cause))
+}
+
+func (object XxTextInputV3) SetContentType(hint uint32, purpose uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 5, hint, purpose))
+}
+
+func (object XxTextInputV3) SetCursorRectangle(x int32, y int32, width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 6, x, y, width, height))
+}
+
+func (object XxTextInputV3) Commit() {
+	object.client.Write(wayland.NewMessage(object.id, 7))
+}
+
+func (object XxTextInputV3) SetAvailableActions(availableActions []uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 8, availableActions))
+}
+
+func (object XxTextInputV3) AnnounceSupportedFeatures(features uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 9, features))
+}
+
+func (object XxTextInputV3) OnEnter(listener func(surface WlSurface)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object XxTextInputV3) OnLeave(listener func(surface WlSurface)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object XxTextInputV3) OnPreeditString(listener func(text string, cursorBegin int32, cursorEnd int32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadString(), message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object XxTextInputV3) OnCommitString(listener func(text string)) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object XxTextInputV3) OnDeleteSurroundingText(listener func(beforeLength uint32, afterLength uint32)) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object XxTextInputV3) OnMoveCursor(listener func(cursor int32, anchor int32)) chan struct{} {
+	return object.client.On(object.id, 5, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object XxTextInputV3) OnDone(listener func(serial uint32)) chan struct{} {
+	return object.client.On(object.id, 6, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object XxTextInputV3) OnPerformAction(listener func(action uint32)) chan struct{} {
+	return object.client.On(object.id, 7, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type XxTextInputManagerV3 Object
+
+func (object XxTextInputManagerV3) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxTextInputManagerV3) GetTextInput(seat WlSeat) XxTextInputV3 {
+	id := XxTextInputV3(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_text_input_v3",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, seat.id))
+
+	return id
+}
+
+type XxZoneManagerV1 Object
+
+func (object XxZoneManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxZoneManagerV1) GetZoneItem(toplevel XdgToplevel) XxZoneItemV1 {
+	id := XxZoneItemV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_zone_item_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, toplevel.id))
+
+	return id
+}
+
+func (object XxZoneManagerV1) GetZone(output WlOutput) XxZoneV1 {
+	id := XxZoneV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_zone_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, id.id, output.id))
+
+	return id
+}
+
+func (object XxZoneManagerV1) GetZoneFromHandle(handle string) XxZoneV1 {
+	id := XxZoneV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xx_zone_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 3, id.id, handle))
+
+	return id
+}
+
+type XxZoneItemV1 Object
+
+func (object XxZoneItemV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxZoneItemV1) SetPosition(x int32, y int32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, x, y))
+}
+
+func (object XxZoneItemV1) OnFrameExtents(listener func(top int32, bottom int32, left int32, right int32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32(), message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object XxZoneItemV1) OnPosition(listener func(x int32, y int32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object XxZoneItemV1) OnPositionFailed(listener func()) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object XxZoneItemV1) OnClosed(listener func()) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type XxZoneV1 Object
+
+func (object XxZoneV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XxZoneV1) AddItem(item XxZoneItemV1) {
+	object.client.Write(wayland.NewMessage(object.id, 1, item.id))
+}
+
+func (object XxZoneV1) RemoveItem(item XxZoneItemV1) {
+	object.client.Write(wayland.NewMessage(object.id, 2, item.id))
+}
+
+func (object XxZoneV1) OnSize(listener func(width int32, height int32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object XxZoneV1) OnHandle(listener func(handle string)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object XxZoneV1) OnDone(listener func()) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object XxZoneV1) OnItemBlocked(listener func(item XxZoneItemV1)) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener(XxZoneItemV1(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object XxZoneV1) OnItemEntered(listener func(item XxZoneItemV1)) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener(XxZoneItemV1(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object XxZoneV1) OnItemLeft(listener func(item XxZoneItemV1)) chan struct{} {
+	return object.client.On(object.id, 5, func(message *wayland.Message) {
+		listener(XxZoneItemV1(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+type ZwpFullscreenShellV1 Object
+
+func (object ZwpFullscreenShellV1) Release() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpFullscreenShellV1) PresentSurface(surface WlSurface, method uint32, output WlOutput) {
+	object.client.Write(wayland.NewMessage(object.id, 1, surface.id, method, output.id))
+}
+
+func (object ZwpFullscreenShellV1) PresentSurfaceForMode(surface WlSurface, output WlOutput, framerate int32) ZwpFullscreenShellModeFeedbackV1 {
+	feedback := ZwpFullscreenShellModeFeedbackV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_fullscreen_shell_mode_feedback_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, surface.id, output.id, framerate, feedback.id))
+
+	return feedback
+}
+
+func (object ZwpFullscreenShellV1) OnCapability(listener func(capability uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type ZwpFullscreenShellModeFeedbackV1 Object
+
+func (object ZwpFullscreenShellModeFeedbackV1) OnModeSuccessful(listener func()) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpFullscreenShellModeFeedbackV1) OnModeFailed(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpFullscreenShellModeFeedbackV1) OnPresentCancelled(listener func()) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpIdleInhibitManagerV1 Object
+
+func (object ZwpIdleInhibitManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpIdleInhibitManagerV1) CreateInhibitor(surface WlSurface) ZwpIdleInhibitorV1 {
+	id := ZwpIdleInhibitorV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_idle_inhibitor_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id))
+
+	return id
+}
+
+type ZwpIdleInhibitorV1 Object
+
+func (object ZwpIdleInhibitorV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+type ZwpInputMethodContextV1 Object
+
+func (object ZwpInputMethodContextV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpInputMethodContextV1) CommitString(serial uint32, text string) {
+	object.client.Write(wayland.NewMessage(object.id, 1, serial, text))
+}
+
+func (object ZwpInputMethodContextV1) PreeditString(serial uint32, text string, commit string) {
+	object.client.Write(wayland.NewMessage(object.id, 2, serial, text, commit))
+}
+
+func (object ZwpInputMethodContextV1) PreeditStyling(index uint32, length uint32, style uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 3, index, length, style))
+}
+
+func (object ZwpInputMethodContextV1) PreeditCursor(index int32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, index))
+}
+
+func (object ZwpInputMethodContextV1) DeleteSurroundingText(index int32, length uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 5, index, length))
+}
+
+func (object ZwpInputMethodContextV1) CursorPosition(index int32, anchor int32) {
+	object.client.Write(wayland.NewMessage(object.id, 6, index, anchor))
+}
+
+func (object ZwpInputMethodContextV1) ModifiersMap(m []uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 7, m))
+}
+
+func (object ZwpInputMethodContextV1) Keysym(serial uint32, time uint32, sym uint32, state uint32, modifiers uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 8, serial, time, sym, state, modifiers))
+}
+
+func (object ZwpInputMethodContextV1) GrabKeyboard() WlKeyboard {
+	keyboard := WlKeyboard(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "wl_keyboard",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 9, keyboard.id))
+
+	return keyboard
+}
+
+func (object ZwpInputMethodContextV1) Key(serial uint32, time uint32, key uint32, state uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 10, serial, time, key, state))
+}
+
+func (object ZwpInputMethodContextV1) Modifiers(serial uint32, modsDepressed uint32, modsLatched uint32, modsLocked uint32, group uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 11, serial, modsDepressed, modsLatched, modsLocked, group))
+}
+
+func (object ZwpInputMethodContextV1) Language(serial uint32, language string) {
+	object.client.Write(wayland.NewMessage(object.id, 12, serial, language))
+}
+
+func (object ZwpInputMethodContextV1) TextDirection(serial uint32, direction uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 13, serial, direction))
+}
+
+func (object ZwpInputMethodContextV1) OnSurroundingText(listener func(text string, cursor uint32, anchor uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadString(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpInputMethodContextV1) OnReset(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpInputMethodContextV1) OnContentType(listener func(hint uint32, purpose uint32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpInputMethodContextV1) OnInvokeAction(listener func(button uint32, index uint32)) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpInputMethodContextV1) OnCommitState(listener func(serial uint32)) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpInputMethodContextV1) OnPreferredLanguage(listener func(language string)) chan struct{} {
+	return object.client.On(object.id, 5, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+type ZwpInputMethodV1 Object
+
+func (object ZwpInputMethodV1) OnActivate(listener func(id ZwpInputMethodContextV1)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(ZwpInputMethodContextV1(Object{client: object.client, id: object.client.NewObjectId(), iface: "zwp_input_method_context_v1"}))
+	})
+}
+
+func (object ZwpInputMethodV1) OnDeactivate(listener func(context ZwpInputMethodContextV1)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(ZwpInputMethodContextV1(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+type ZwpInputPanelV1 Object
+
+func (object ZwpInputPanelV1) GetInputPanelSurface(surface WlSurface) ZwpInputPanelSurfaceV1 {
+	id := ZwpInputPanelSurfaceV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_input_panel_surface_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 0, id.id, surface.id))
+
+	return id
+}
+
+type ZwpInputPanelSurfaceV1 Object
+
+func (object ZwpInputPanelSurfaceV1) SetToplevel(output WlOutput, position uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 0, output.id, position))
+}
+
+func (object ZwpInputPanelSurfaceV1) SetOverlayPanel() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+type ZwpInputTimestampsManagerV1 Object
+
+func (object ZwpInputTimestampsManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpInputTimestampsManagerV1) GetKeyboardTimestamps(keyboard WlKeyboard) ZwpInputTimestampsV1 {
+	id := ZwpInputTimestampsV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_input_timestamps_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, keyboard.id))
+
+	return id
+}
+
+func (object ZwpInputTimestampsManagerV1) GetPointerTimestamps(pointer WlPointer) ZwpInputTimestampsV1 {
+	id := ZwpInputTimestampsV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_input_timestamps_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, id.id, pointer.id))
+
+	return id
+}
+
+func (object ZwpInputTimestampsManagerV1) GetTouchTimestamps(touch WlTouch) ZwpInputTimestampsV1 {
+	id := ZwpInputTimestampsV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_input_timestamps_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 3, id.id, touch.id))
+
+	return id
+}
+
+type ZwpInputTimestampsV1 Object
+
+func (object ZwpInputTimestampsV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpInputTimestampsV1) OnTimestamp(listener func(tvSecHi uint32, tvSecLo uint32, tvNsec uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+type ZwpKeyboardShortcutsInhibitManagerV1 Object
+
+func (object ZwpKeyboardShortcutsInhibitManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpKeyboardShortcutsInhibitManagerV1) InhibitShortcuts(surface WlSurface, seat WlSeat) ZwpKeyboardShortcutsInhibitorV1 {
+	id := ZwpKeyboardShortcutsInhibitorV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_keyboard_shortcuts_inhibitor_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id, seat.id))
+
+	return id
+}
+
+type ZwpKeyboardShortcutsInhibitorV1 Object
+
+func (object ZwpKeyboardShortcutsInhibitorV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpKeyboardShortcutsInhibitorV1) OnActive(listener func()) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpKeyboardShortcutsInhibitorV1) OnInactive(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpLinuxExplicitSynchronizationV1 Object
+
+func (object ZwpLinuxExplicitSynchronizationV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpLinuxExplicitSynchronizationV1) GetSynchronization(surface WlSurface) ZwpLinuxSurfaceSynchronizationV1 {
+	id := ZwpLinuxSurfaceSynchronizationV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_linux_surface_synchronization_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id))
+
+	return id
+}
+
+type ZwpLinuxSurfaceSynchronizationV1 Object
+
+func (object ZwpLinuxSurfaceSynchronizationV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpLinuxSurfaceSynchronizationV1) SetAcquireFence(fd int) {
+	object.client.Write(wayland.NewMessage(object.id, 1).WithFds(fd))
+}
+
+func (object ZwpLinuxSurfaceSynchronizationV1) GetRelease() ZwpLinuxBufferReleaseV1 {
+	release := ZwpLinuxBufferReleaseV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_linux_buffer_release_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, release.id))
+
+	return release
+}
+
+type ZwpLinuxBufferReleaseV1 Object
+
+func (object ZwpLinuxBufferReleaseV1) OnFencedRelease(listener func(fence int)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadFd())
+	})
+}
+
+func (object ZwpLinuxBufferReleaseV1) OnImmediateRelease(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpPointerConstraintsV1 Object
+
+func (object ZwpPointerConstraintsV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpPointerConstraintsV1) LockPointer(surface WlSurface, pointer WlPointer, region WlRegion, lifetime uint32) ZwpLockedPointerV1 {
+	id := ZwpLockedPointerV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_locked_pointer_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id, pointer.id, region.id, lifetime))
+
+	return id
+}
+
+func (object ZwpPointerConstraintsV1) ConfinePointer(surface WlSurface, pointer WlPointer, region WlRegion, lifetime uint32) ZwpConfinedPointerV1 {
+	id := ZwpConfinedPointerV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_confined_pointer_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, id.id, surface.id, pointer.id, region.id, lifetime))
+
+	return id
+}
+
+type ZwpLockedPointerV1 Object
+
+func (object ZwpLockedPointerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpLockedPointerV1) SetCursorPositionHint(surfaceX wayland.Fixed, surfaceY wayland.Fixed) {
+	object.client.Write(wayland.NewMessage(object.id, 1, surfaceX, surfaceY))
+}
+
+func (object ZwpLockedPointerV1) SetRegion(region WlRegion) {
+	object.client.Write(wayland.NewMessage(object.id, 2, region.id))
+}
+
+func (object ZwpLockedPointerV1) OnLocked(listener func()) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpLockedPointerV1) OnUnlocked(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpConfinedPointerV1 Object
+
+func (object ZwpConfinedPointerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpConfinedPointerV1) SetRegion(region WlRegion) {
+	object.client.Write(wayland.NewMessage(object.id, 1, region.id))
+}
+
+func (object ZwpConfinedPointerV1) OnConfined(listener func()) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpConfinedPointerV1) OnUnconfined(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpPointerGesturesV1 Object
+
+func (object ZwpPointerGesturesV1) GetSwipeGesture(pointer WlPointer) ZwpPointerGestureSwipeV1 {
+	id := ZwpPointerGestureSwipeV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_pointer_gesture_swipe_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 0, id.id, pointer.id))
+
+	return id
+}
+
+func (object ZwpPointerGesturesV1) GetPinchGesture(pointer WlPointer) ZwpPointerGesturePinchV1 {
+	id := ZwpPointerGesturePinchV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_pointer_gesture_pinch_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, pointer.id))
+
+	return id
+}
+
+func (object ZwpPointerGesturesV1) Release() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+func (object ZwpPointerGesturesV1) GetHoldGesture(pointer WlPointer) ZwpPointerGestureHoldV1 {
+	id := ZwpPointerGestureHoldV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_pointer_gesture_hold_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 3, id.id, pointer.id))
+
+	return id
+}
+
+type ZwpPointerGestureSwipeV1 Object
+
+func (object ZwpPointerGestureSwipeV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpPointerGestureSwipeV1) OnBegin(listener func(serial uint32, time uint32, surface WlSurface, fingers uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}), message.ReadUint32())
+	})
+}
+
+func (object ZwpPointerGestureSwipeV1) OnUpdate(listener func(time uint32, dx wayland.Fixed, dy wayland.Fixed)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadFixed(), message.ReadFixed())
+	})
+}
+
+func (object ZwpPointerGestureSwipeV1) OnEnd(listener func(serial uint32, time uint32, cancelled int32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadInt32())
+	})
+}
+
+type ZwpPointerGesturePinchV1 Object
+
+func (object ZwpPointerGesturePinchV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpPointerGesturePinchV1) OnBegin(listener func(serial uint32, time uint32, surface WlSurface, fingers uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}), message.ReadUint32())
+	})
+}
+
+func (object ZwpPointerGesturePinchV1) OnUpdate(listener func(time uint32, dx wayland.Fixed, dy wayland.Fixed, scale wayland.Fixed, rotation wayland.Fixed)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadFixed(), message.ReadFixed(), message.ReadFixed(), message.ReadFixed())
+	})
+}
+
+func (object ZwpPointerGesturePinchV1) OnEnd(listener func(serial uint32, time uint32, cancelled int32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadInt32())
+	})
+}
+
+type ZwpPointerGestureHoldV1 Object
+
+func (object ZwpPointerGestureHoldV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpPointerGestureHoldV1) OnBegin(listener func(serial uint32, time uint32, surface WlSurface, fingers uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}), message.ReadUint32())
+	})
+}
+
+func (object ZwpPointerGestureHoldV1) OnEnd(listener func(serial uint32, time uint32, cancelled int32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadInt32())
+	})
+}
+
+type ZwpPrimarySelectionDeviceManagerV1 Object
+
+func (object ZwpPrimarySelectionDeviceManagerV1) CreateSource() ZwpPrimarySelectionSourceV1 {
+	id := ZwpPrimarySelectionSourceV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_primary_selection_source_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 0, id.id))
+
+	return id
+}
+
+func (object ZwpPrimarySelectionDeviceManagerV1) GetDevice(seat WlSeat) ZwpPrimarySelectionDeviceV1 {
+	id := ZwpPrimarySelectionDeviceV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_primary_selection_device_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, seat.id))
+
+	return id
+}
+
+func (object ZwpPrimarySelectionDeviceManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+type ZwpPrimarySelectionDeviceV1 Object
+
+func (object ZwpPrimarySelectionDeviceV1) SetSelection(source ZwpPrimarySelectionSourceV1, serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 0, source.id, serial))
+}
+
+func (object ZwpPrimarySelectionDeviceV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object ZwpPrimarySelectionDeviceV1) OnDataOffer(listener func(offer ZwpPrimarySelectionOfferV1)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(ZwpPrimarySelectionOfferV1(Object{client: object.client, id: object.client.NewObjectId(), iface: "zwp_primary_selection_offer_v1"}))
+	})
+}
+
+func (object ZwpPrimarySelectionDeviceV1) OnSelection(listener func(id ZwpPrimarySelectionOfferV1)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(ZwpPrimarySelectionOfferV1(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+type ZwpPrimarySelectionOfferV1 Object
+
+func (object ZwpPrimarySelectionOfferV1) Receive(mimeType string, fd int) {
+	object.client.Write(wayland.NewMessage(object.id, 0, mimeType).WithFds(fd))
+}
+
+func (object ZwpPrimarySelectionOfferV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object ZwpPrimarySelectionOfferV1) OnOffer(listener func(mimeType string)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+type ZwpPrimarySelectionSourceV1 Object
+
+func (object ZwpPrimarySelectionSourceV1) Offer(mimeType string) {
+	object.client.Write(wayland.NewMessage(object.id, 0, mimeType))
+}
+
+func (object ZwpPrimarySelectionSourceV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object ZwpPrimarySelectionSourceV1) OnSend(listener func(mimeType string, fd int)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadString(), message.ReadFd())
+	})
+}
+
+func (object ZwpPrimarySelectionSourceV1) OnCancelled(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpRelativePointerManagerV1 Object
+
+func (object ZwpRelativePointerManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpRelativePointerManagerV1) GetRelativePointer(pointer WlPointer) ZwpRelativePointerV1 {
+	id := ZwpRelativePointerV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_relative_pointer_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, pointer.id))
+
+	return id
+}
+
+type ZwpRelativePointerV1 Object
+
+func (object ZwpRelativePointerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpRelativePointerV1) OnRelativeMotion(listener func(utimeHi uint32, utimeLo uint32, dx wayland.Fixed, dy wayland.Fixed, dxUnaccel wayland.Fixed, dyUnaccel wayland.Fixed)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadFixed(), message.ReadFixed(), message.ReadFixed(), message.ReadFixed())
+	})
+}
+
+type ZwpTabletManagerV1 Object
+
+func (object ZwpTabletManagerV1) GetTabletSeat(seat WlSeat) ZwpTabletSeatV1 {
+	tabletSeat := ZwpTabletSeatV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_tablet_seat_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 0, tabletSeat.id, seat.id))
+
+	return tabletSeat
+}
+
+func (object ZwpTabletManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+type ZwpTabletSeatV1 Object
+
+func (object ZwpTabletSeatV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpTabletSeatV1) OnTabletAdded(listener func(id ZwpTabletV1)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(ZwpTabletV1(Object{client: object.client, id: object.client.NewObjectId(), iface: "zwp_tablet_v1"}))
+	})
+}
+
+func (object ZwpTabletSeatV1) OnToolAdded(listener func(id ZwpTabletToolV1)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(ZwpTabletToolV1(Object{client: object.client, id: object.client.NewObjectId(), iface: "zwp_tablet_tool_v1"}))
+	})
+}
+
+type ZwpTabletToolV1 Object
+
+func (object ZwpTabletToolV1) SetCursor(serial uint32, surface WlSurface, hotspotX int32, hotspotY int32) {
+	object.client.Write(wayland.NewMessage(object.id, 0, serial, surface.id, hotspotX, hotspotY))
+}
+
+func (object ZwpTabletToolV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object ZwpTabletToolV1) OnType(listener func(toolType uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnHardwareSerial(listener func(hardwareSerialHi uint32, hardwareSerialLo uint32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnHardwareIdWacom(listener func(hardwareIdHi uint32, hardwareIdLo uint32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnCapability(listener func(capability uint32)) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnDone(listener func()) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpTabletToolV1) OnRemoved(listener func()) chan struct{} {
+	return object.client.On(object.id, 5, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpTabletToolV1) OnProximityIn(listener func(serial uint32, tablet ZwpTabletV1, surface WlSurface)) chan struct{} {
+	return object.client.On(object.id, 6, func(message *wayland.Message) {
+		listener(message.ReadUint32(), ZwpTabletV1(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}), WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object ZwpTabletToolV1) OnProximityOut(listener func()) chan struct{} {
+	return object.client.On(object.id, 7, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpTabletToolV1) OnDown(listener func(serial uint32)) chan struct{} {
+	return object.client.On(object.id, 8, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnUp(listener func()) chan struct{} {
+	return object.client.On(object.id, 9, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpTabletToolV1) OnMotion(listener func(x wayland.Fixed, y wayland.Fixed)) chan struct{} {
+	return object.client.On(object.id, 10, func(message *wayland.Message) {
+		listener(message.ReadFixed(), message.ReadFixed())
+	})
+}
+
+func (object ZwpTabletToolV1) OnPressure(listener func(pressure uint32)) chan struct{} {
+	return object.client.On(object.id, 11, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnDistance(listener func(distance uint32)) chan struct{} {
+	return object.client.On(object.id, 12, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnTilt(listener func(tiltX int32, tiltY int32)) chan struct{} {
+	return object.client.On(object.id, 13, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnRotation(listener func(degrees int32)) chan struct{} {
+	return object.client.On(object.id, 14, func(message *wayland.Message) {
+		listener(message.ReadInt32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnSlider(listener func(position int32)) chan struct{} {
+	return object.client.On(object.id, 15, func(message *wayland.Message) {
+		listener(message.ReadInt32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnWheel(listener func(degrees int32, clicks int32)) chan struct{} {
+	return object.client.On(object.id, 16, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnButton(listener func(serial uint32, button uint32, state uint32)) chan struct{} {
+	return object.client.On(object.id, 17, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletToolV1) OnFrame(listener func(time uint32)) chan struct{} {
+	return object.client.On(object.id, 18, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type ZwpTabletV1 Object
+
+func (object ZwpTabletV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpTabletV1) OnName(listener func(name string)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object ZwpTabletV1) OnId(listener func(vid uint32, pid uint32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTabletV1) OnPath(listener func(path string)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object ZwpTabletV1) OnDone(listener func()) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpTabletV1) OnRemoved(listener func()) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpTextInputV1 Object
+
+func (object ZwpTextInputV1) Activate(seat WlSeat, surface WlSurface) {
+	object.client.Write(wayland.NewMessage(object.id, 0, seat.id, surface.id))
+}
+
+func (object ZwpTextInputV1) Deactivate(seat WlSeat) {
+	object.client.Write(wayland.NewMessage(object.id, 1, seat.id))
+}
+
+func (object ZwpTextInputV1) ShowInputPanel() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+func (object ZwpTextInputV1) HideInputPanel() {
+	object.client.Write(wayland.NewMessage(object.id, 3))
+}
+
+func (object ZwpTextInputV1) Reset() {
+	object.client.Write(wayland.NewMessage(object.id, 4))
+}
+
+func (object ZwpTextInputV1) SetSurroundingText(text string, cursor uint32, anchor uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 5, text, cursor, anchor))
+}
+
+func (object ZwpTextInputV1) SetContentType(hint uint32, purpose uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 6, hint, purpose))
+}
+
+func (object ZwpTextInputV1) SetCursorRectangle(x int32, y int32, width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 7, x, y, width, height))
+}
+
+func (object ZwpTextInputV1) SetPreferredLanguage(language string) {
+	object.client.Write(wayland.NewMessage(object.id, 8, language))
+}
+
+func (object ZwpTextInputV1) CommitState(serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 9, serial))
+}
+
+func (object ZwpTextInputV1) InvokeAction(button uint32, index uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 10, button, index))
+}
+
+func (object ZwpTextInputV1) OnEnter(listener func(surface WlSurface)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object ZwpTextInputV1) OnLeave(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZwpTextInputV1) OnModifiersMap(listener func(m []uint32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadArray())
+	})
+}
+
+func (object ZwpTextInputV1) OnInputPanelState(listener func(state uint32)) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpTextInputV1) OnPreeditString(listener func(serial uint32, text string, commit string)) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadString(), message.ReadString())
+	})
+}
+
+func (object ZwpTextInputV1) OnPreeditStyling(listener func(index uint32, length uint32, style uint32)) chan struct{} {
+	return object.client.On(object.id, 5, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTextInputV1) OnPreeditCursor(listener func(index int32)) chan struct{} {
+	return object.client.On(object.id, 6, func(message *wayland.Message) {
+		listener(message.ReadInt32())
+	})
+}
+
+func (object ZwpTextInputV1) OnCommitString(listener func(serial uint32, text string)) chan struct{} {
+	return object.client.On(object.id, 7, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadString())
+	})
+}
+
+func (object ZwpTextInputV1) OnCursorPosition(listener func(index int32, anchor int32)) chan struct{} {
+	return object.client.On(object.id, 8, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object ZwpTextInputV1) OnDeleteSurroundingText(listener func(index int32, length uint32)) chan struct{} {
+	return object.client.On(object.id, 9, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTextInputV1) OnKeysym(listener func(serial uint32, time uint32, sym uint32, state uint32, modifiers uint32)) chan struct{} {
+	return object.client.On(object.id, 10, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadUint32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTextInputV1) OnLanguage(listener func(serial uint32, language string)) chan struct{} {
+	return object.client.On(object.id, 11, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadString())
+	})
+}
+
+func (object ZwpTextInputV1) OnTextDirection(listener func(serial uint32, direction uint32)) chan struct{} {
+	return object.client.On(object.id, 12, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+type ZwpTextInputManagerV1 Object
+
+func (object ZwpTextInputManagerV1) CreateTextInput() ZwpTextInputV1 {
+	id := ZwpTextInputV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_text_input_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 0, id.id))
+
+	return id
+}
+
+type ZwpTextInputV3 Object
+
+func (object ZwpTextInputV3) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpTextInputV3) Enable() {
+	object.client.Write(wayland.NewMessage(object.id, 1))
+}
+
+func (object ZwpTextInputV3) Disable() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+func (object ZwpTextInputV3) SetSurroundingText(text string, cursor int32, anchor int32) {
+	object.client.Write(wayland.NewMessage(object.id, 3, text, cursor, anchor))
+}
+
+func (object ZwpTextInputV3) SetTextChangeCause(cause uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, cause))
+}
+
+func (object ZwpTextInputV3) SetContentType(hint uint32, purpose uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 5, hint, purpose))
+}
+
+func (object ZwpTextInputV3) SetCursorRectangle(x int32, y int32, width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 6, x, y, width, height))
+}
+
+func (object ZwpTextInputV3) Commit() {
+	object.client.Write(wayland.NewMessage(object.id, 7))
+}
+
+func (object ZwpTextInputV3) SetAvailableActions(availableActions []uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 8, availableActions))
+}
+
+func (object ZwpTextInputV3) ShowInputPanel() {
+	object.client.Write(wayland.NewMessage(object.id, 9))
+}
+
+func (object ZwpTextInputV3) HideInputPanel() {
+	object.client.Write(wayland.NewMessage(object.id, 10))
+}
+
+func (object ZwpTextInputV3) OnEnter(listener func(surface WlSurface)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object ZwpTextInputV3) OnLeave(listener func(surface WlSurface)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(WlSurface(Object{object.client, message.ReadUint32(), message.ReadString(), message.ReadUint32()}))
+	})
+}
+
+func (object ZwpTextInputV3) OnPreeditString(listener func(text string, cursorBegin int32, cursorEnd int32)) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener(message.ReadString(), message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object ZwpTextInputV3) OnCommitString(listener func(text string)) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object ZwpTextInputV3) OnDeleteSurroundingText(listener func(beforeLength uint32, afterLength uint32)) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTextInputV3) OnDone(listener func(serial uint32)) chan struct{} {
+	return object.client.On(object.id, 5, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+func (object ZwpTextInputV3) OnAction(listener func(action uint32, serial uint32)) chan struct{} {
+	return object.client.On(object.id, 6, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+func (object ZwpTextInputV3) OnLanguage(listener func(language string)) chan struct{} {
+	return object.client.On(object.id, 7, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object ZwpTextInputV3) OnPreeditHint(listener func(start uint32, end uint32, hint uint32)) chan struct{} {
+	return object.client.On(object.id, 8, func(message *wayland.Message) {
+		listener(message.ReadUint32(), message.ReadUint32(), message.ReadUint32())
+	})
+}
+
+type ZwpTextInputManagerV3 Object
+
+func (object ZwpTextInputManagerV3) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpTextInputManagerV3) GetTextInput(seat WlSeat) ZwpTextInputV3 {
+	id := ZwpTextInputV3(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_text_input_v3",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, seat.id))
+
+	return id
+}
+
+type ZxdgDecorationManagerV1 Object
+
+func (object ZxdgDecorationManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgDecorationManagerV1) GetToplevelDecoration(toplevel XdgToplevel) ZxdgToplevelDecorationV1 {
+	id := ZxdgToplevelDecorationV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_toplevel_decoration_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, toplevel.id))
+
+	return id
+}
+
+type ZxdgToplevelDecorationV1 Object
+
+func (object ZxdgToplevelDecorationV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgToplevelDecorationV1) SetMode(mode uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, mode))
+}
+
+func (object ZxdgToplevelDecorationV1) UnsetMode() {
+	object.client.Write(wayland.NewMessage(object.id, 2))
+}
+
+func (object ZxdgToplevelDecorationV1) OnConfigure(listener func(mode uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type ZxdgExporterV1 Object
+
+func (object ZxdgExporterV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgExporterV1) Export(surface WlSurface) ZxdgExportedV1 {
+	id := ZxdgExportedV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_exported_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id))
+
+	return id
+}
+
+type ZxdgImporterV1 Object
+
+func (object ZxdgImporterV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgImporterV1) Import(handle string) ZxdgImportedV1 {
+	id := ZxdgImportedV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_imported_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, handle))
+
+	return id
+}
+
+type ZxdgExportedV1 Object
+
+func (object ZxdgExportedV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgExportedV1) OnHandle(listener func(handle string)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+type ZxdgImportedV1 Object
+
+func (object ZxdgImportedV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgImportedV1) SetParentOf(surface WlSurface) {
+	object.client.Write(wayland.NewMessage(object.id, 1, surface.id))
+}
+
+func (object ZxdgImportedV1) OnDestroyed(listener func()) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZxdgExporterV2 Object
+
+func (object ZxdgExporterV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgExporterV2) ExportToplevel(surface WlSurface) ZxdgExportedV2 {
+	id := ZxdgExportedV2(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_exported_v2",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id))
+
+	return id
+}
+
+type ZxdgImporterV2 Object
+
+func (object ZxdgImporterV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgImporterV2) ImportToplevel(handle string) ZxdgImportedV2 {
+	id := ZxdgImportedV2(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_imported_v2",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, handle))
+
+	return id
+}
+
+type ZxdgExportedV2 Object
+
+func (object ZxdgExportedV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgExportedV2) OnHandle(listener func(handle string)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+type ZxdgImportedV2 Object
+
+func (object ZxdgImportedV2) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgImportedV2) SetParentOf(surface WlSurface) {
+	object.client.Write(wayland.NewMessage(object.id, 1, surface.id))
+}
+
+func (object ZxdgImportedV2) OnDestroyed(listener func()) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZxdgOutputManagerV1 Object
+
+func (object ZxdgOutputManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgOutputManagerV1) GetXdgOutput(output WlOutput) ZxdgOutputV1 {
+	id := ZxdgOutputV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_output_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, output.id))
+
+	return id
+}
+
+type ZxdgOutputV1 Object
+
+func (object ZxdgOutputV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgOutputV1) OnLogicalPosition(listener func(x int32, y int32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object ZxdgOutputV1) OnLogicalSize(listener func(width int32, height int32)) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object ZxdgOutputV1) OnDone(listener func()) chan struct{} {
+	return object.client.On(object.id, 2, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+func (object ZxdgOutputV1) OnName(listener func(name string)) chan struct{} {
+	return object.client.On(object.id, 3, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+func (object ZxdgOutputV1) OnDescription(listener func(description string)) chan struct{} {
+	return object.client.On(object.id, 4, func(message *wayland.Message) {
+		listener(message.ReadString())
+	})
+}
+
+type XdgShell Object
+
+func (object XdgShell) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object XdgShell) UseUnstableVersion(version int32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, version))
+}
+
+func (object XdgShell) GetXdgSurface(surface WlSurface) XdgSurface {
+	id := XdgSurface(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xdg_surface",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, id.id, surface.id))
+
+	return id
+}
+
+func (object XdgShell) GetXdgPopup(surface WlSurface, parent WlSurface, seat WlSeat, serial uint32, x int32, y int32) XdgPopup {
+	id := XdgPopup(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "xdg_popup",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 3, id.id, surface.id, parent.id, seat.id, serial, x, y))
+
+	return id
+}
+
+func (object XdgShell) Pong(serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, serial))
+}
+
+func (object XdgShell) OnPing(listener func(serial uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type ZxdgShellV6 Object
+
+func (object ZxdgShellV6) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgShellV6) CreatePositioner() ZxdgPositionerV6 {
+	id := ZxdgPositionerV6(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_positioner_v6",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id))
+
+	return id
+}
+
+func (object ZxdgShellV6) GetXdgSurface(surface WlSurface) ZxdgSurfaceV6 {
+	id := ZxdgSurfaceV6(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_surface_v6",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, id.id, surface.id))
+
+	return id
+}
+
+func (object ZxdgShellV6) Pong(serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 3, serial))
+}
+
+func (object ZxdgShellV6) OnPing(listener func(serial uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type ZxdgPositionerV6 Object
+
+func (object ZxdgPositionerV6) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgPositionerV6) SetSize(width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, width, height))
+}
+
+func (object ZxdgPositionerV6) SetAnchorRect(x int32, y int32, width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 2, x, y, width, height))
+}
+
+func (object ZxdgPositionerV6) SetAnchor(anchor uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 3, anchor))
+}
+
+func (object ZxdgPositionerV6) SetGravity(gravity uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, gravity))
+}
+
+func (object ZxdgPositionerV6) SetConstraintAdjustment(constraintAdjustment uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 5, constraintAdjustment))
+}
+
+func (object ZxdgPositionerV6) SetOffset(x int32, y int32) {
+	object.client.Write(wayland.NewMessage(object.id, 6, x, y))
+}
+
+type ZxdgSurfaceV6 Object
+
+func (object ZxdgSurfaceV6) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgSurfaceV6) GetToplevel() ZxdgToplevelV6 {
+	id := ZxdgToplevelV6(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_toplevel_v6",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id))
+
+	return id
+}
+
+func (object ZxdgSurfaceV6) GetPopup(parent ZxdgSurfaceV6, positioner ZxdgPositionerV6) ZxdgPopupV6 {
+	id := ZxdgPopupV6(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zxdg_popup_v6",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 2, id.id, parent.id, positioner.id))
+
+	return id
+}
+
+func (object ZxdgSurfaceV6) SetWindowGeometry(x int32, y int32, width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 3, x, y, width, height))
+}
+
+func (object ZxdgSurfaceV6) AckConfigure(serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, serial))
+}
+
+func (object ZxdgSurfaceV6) OnConfigure(listener func(serial uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadUint32())
+	})
+}
+
+type ZxdgToplevelV6 Object
+
+func (object ZxdgToplevelV6) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgToplevelV6) SetParent(parent ZxdgToplevelV6) {
+	object.client.Write(wayland.NewMessage(object.id, 1, parent.id))
+}
+
+func (object ZxdgToplevelV6) SetTitle(title string) {
+	object.client.Write(wayland.NewMessage(object.id, 2, title))
+}
+
+func (object ZxdgToplevelV6) SetAppId(appId string) {
+	object.client.Write(wayland.NewMessage(object.id, 3, appId))
+}
+
+func (object ZxdgToplevelV6) ShowWindowMenu(seat WlSeat, serial uint32, x int32, y int32) {
+	object.client.Write(wayland.NewMessage(object.id, 4, seat.id, serial, x, y))
+}
+
+func (object ZxdgToplevelV6) Move(seat WlSeat, serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 5, seat.id, serial))
+}
+
+func (object ZxdgToplevelV6) Resize(seat WlSeat, serial uint32, edges uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 6, seat.id, serial, edges))
+}
+
+func (object ZxdgToplevelV6) SetMaxSize(width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 7, width, height))
+}
+
+func (object ZxdgToplevelV6) SetMinSize(width int32, height int32) {
+	object.client.Write(wayland.NewMessage(object.id, 8, width, height))
+}
+
+func (object ZxdgToplevelV6) SetMaximized() {
+	object.client.Write(wayland.NewMessage(object.id, 9))
+}
+
+func (object ZxdgToplevelV6) UnsetMaximized() {
+	object.client.Write(wayland.NewMessage(object.id, 10))
+}
+
+func (object ZxdgToplevelV6) SetFullscreen(output WlOutput) {
+	object.client.Write(wayland.NewMessage(object.id, 11, output.id))
+}
+
+func (object ZxdgToplevelV6) UnsetFullscreen() {
+	object.client.Write(wayland.NewMessage(object.id, 12))
+}
+
+func (object ZxdgToplevelV6) SetMinimized() {
+	object.client.Write(wayland.NewMessage(object.id, 13))
+}
+
+func (object ZxdgToplevelV6) OnConfigure(listener func(width int32, height int32, states []uint32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32(), message.ReadArray())
+	})
+}
+
+func (object ZxdgToplevelV6) OnClose(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZxdgPopupV6 Object
+
+func (object ZxdgPopupV6) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZxdgPopupV6) Grab(seat WlSeat, serial uint32) {
+	object.client.Write(wayland.NewMessage(object.id, 1, seat.id, serial))
+}
+
+func (object ZxdgPopupV6) OnConfigure(listener func(x int32, y int32, width int32, height int32)) chan struct{} {
+	return object.client.On(object.id, 0, func(message *wayland.Message) {
+		listener(message.ReadInt32(), message.ReadInt32(), message.ReadInt32(), message.ReadInt32())
+	})
+}
+
+func (object ZxdgPopupV6) OnPopupDone(listener func()) chan struct{} {
+	return object.client.On(object.id, 1, func(message *wayland.Message) {
+		listener()
+	})
+}
+
+type ZwpXwaylandKeyboardGrabManagerV1 Object
+
+func (object ZwpXwaylandKeyboardGrabManagerV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
+}
+
+func (object ZwpXwaylandKeyboardGrabManagerV1) GrabKeyboard(surface WlSurface, seat WlSeat) ZwpXwaylandKeyboardGrabV1 {
+	id := ZwpXwaylandKeyboardGrabV1(Object{
+		client: object.client,
+		id: object.client.NewObjectId(),
+		iface: "zwp_xwayland_keyboard_grab_v1",
+	})
+
+	object.client.Write(wayland.NewMessage(object.id, 1, id.id, surface.id, seat.id))
+
+	return id
+}
+
+type ZwpXwaylandKeyboardGrabV1 Object
+
+func (object ZwpXwaylandKeyboardGrabV1) Destroy() {
+	object.client.Write(wayland.NewMessage(object.id, 0))
 }
 
