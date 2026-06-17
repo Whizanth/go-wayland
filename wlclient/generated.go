@@ -3659,7 +3659,7 @@ func (object XxCutoutsV1) SetUnhandled(unhandled []uint32) {
 	object.client.Write(wayland.NewMessage(object.id, 1, unhandled))
 }
 
-func (object XxCutoutsV1) OnCutoutBox(listener func(x int32, y int32, width int32, height int32, type uint32, id uint32)) chan struct{} {
+func (object XxCutoutsV1) OnCutoutBox(listener func(x int32, y int32, width int32, height int32, typ uint32, id uint32)) chan struct{} {
 	return object.client.On(object.id, 0, func(message *wayland.Message) {
 		listener(message.ReadInt32(), message.ReadInt32(), message.ReadInt32(), message.ReadInt32(), message.ReadUint32(), message.ReadUint32())
 	})
